@@ -2,12 +2,13 @@
     <div>
         <h1>Socket chat</h1>
 
-        <div v-if="userJoined">
-            <!-- Connection status -->
-            <p v-if="isConnected">CONNECTED</p>
-            <p v-else>DISCONNECTED</p>
+        <!-- Connection status -->
+        <p v-if="isConnected">CONNECTED</p>
+        <p v-else>DISCONNECTED</p>
 
-            <button @click="socketMessages = []">Clear messages</button>
+        <div v-if="userJoined">
+            <button @click="detachUserFromChat">Detach user</button>
+            <button @click="socketMessages = []" style="margin-left: 7px">Clear messages</button>
 
             <p>Messages {{ socketMessages | count }}</p>
             <br><br>
@@ -24,12 +25,12 @@
 
         <div v-else>
             <p>Enter you name :</p>
-            <input v-model="clientName" type="text">
+            <input v-model="userName" type="text">
             <br><br>
-            <button @click="joinClientToChat(false)">
+            <button @click="joinUserToChat(false)">
                 Join to chat
             </button>
-            <button @click="joinClientToChat(true)" style="margin-left: 7px">
+            <button @click="joinUserToChat(true)" style="margin-left: 7px">
                 Join as anonymous
             </button>
         </div>
@@ -41,7 +42,7 @@
     export default {
         data() {
             return {
-                clientName: '',
+                userName: '',
 
                 userJoined: false,
 
@@ -72,8 +73,12 @@
                 this.printMessage(response);
             },
 
-            error(response) {
-                console.log(`Error - ${response.message}`);
+            messages_loaded(messages) {
+                this.socketMessages.concat(messages);
+            },
+
+            error(error) {
+                console.log(error);
             }
         },
 
@@ -84,13 +89,19 @@
                 console.log(status ? 'Connected with server' : 'Disconnected');
             },
 
-            joinClientToChat(asAnonymous){
-                if (asAnonymous) { this.clientName = 'Anonymous'; }
+            joinUserToChat(asAnonymous){
+                if (asAnonymous) { this.userName = 'Anonymous'; }
 
-                if (!this.clientName) { return; }
+                if (!this.userName) { return; }
 
                 this.userJoined = true;
-                this.$socket.emit('join', { clientName: this.clientName });
+                this.$socket.emit('join_user', { userName: this.userName });
+            },
+
+            detachUserFromChat(){
+                this.$socket.emit('detach_user');
+                this.userName = '';
+                this.userJoined = false;
             },
 
             sendMessage(eventObject){
@@ -117,7 +128,7 @@
         },
 
         created(){
-
+            this.$socket.emit('messages_load');
         }
     }
 

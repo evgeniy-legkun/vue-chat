@@ -1,10 +1,13 @@
 const app = require('http').Server(serverHandler);
-const io = require('socket.io')(app);
 const fs = require('fs');
 
-app.listen(9000);
+//require and configuring socket io
+const io = require('socket.io')(app, {
+    //origins: 'ticket.loc:*'
+});
 
-const indexFile = 'main.js';
+const port = 9000;
+const indexFile = '../dist/index.html';
 
 function serverHandler(request, response) {
     fs.readFile(`${__dirname}/${indexFile}`, (error, data) => {
@@ -13,55 +16,76 @@ function serverHandler(request, response) {
             return response.end('Error of loading index file');
         }
 
-        response.writeHead(200);
+        response.writeHead(200, {'Content-Type': 'text/html'});
         response.end(data);
     });
 }
 
-let clients = {};
+let connections = {};
+let messages = [];
 
-//configuring
-io.set('origins', 'ticket.loc:*'); // return 403 error for not allowed resources
+io.on('connection', socket => { //socket - interface for user and server interaction
+    console.log('User connected');
 
-
-io.on('connection', socket => {
-    //add new client
-    const clientId = Math.random();
-    clients[clientId] = socket;
+    //add a new connection
+    const connectionId = Math.random();
+    connections[connectionId] = socket;
 
     //listeners
-    socket.on('join', function (data) {
-        if (data.clientName !== null) {
-            clients[clientId].name = data.clientName;
-            console.log('client name ', clients[clientId].name);
-            socket.broadcast.send({ message: `${clients[clientId].name} has joined the server !` });
-            return;
-        }
-
-        socket.close();
-    });
-
     socket.on('message', function (data, cb) {
         if (data.message === 'exit') {
-            socket.conn.close();
+            socket.disconnect();
             return;
         }
 
-        if (clients[clientId].readyState === socket.OPEN){
-            const message = { message: data.message, user: clients[clientId].name };
-
+        if (connections[connectionId].readyState === socket.OPEN){
+            const message = { message: data.message, user: connections[connectionId].userName };
             //similar as socket.emit('message', () => {})
-            socket.broadcast.send({ message: data.message, user: clients[clientId].name });
+            socket.broadcast.send(message);
+            messages.push(message);
+
             cb(message);
         }
     });
 
     socket.on('disconnect', function () {
-        socket.emit('error', { message: 'user disconnected' });
-        delete clients[clientId];
+        console.log('User disconnected');
+        delete connections[connectionId];
     });
 
     socket.on('error', function (error) {
-        console.log(`Server error - ${error.message}`);
+        console.log(error);
     });
+
+    socket.on('messages_load', function () {
+        socket.emit('messages_loaded', messages);
+    });
+
+    socket.on('join_user', function (data) {
+        if (data.userName !== null && connections[connectionId].connected) {
+            connections[connectionId].userName = data.userName;
+
+            const message = { message: `${connections[connectionId].userName} has joined the server` };
+            /**
+             * broadcasting messages
+             * instead of socket.broadcast.send(...)
+             */
+            io.emit('message', message);
+
+            messages.push(message);
+        }
+    });
+
+    socket.on('detach_user', function () {
+        const message = { message: `User ${connections[connectionId].userName} detached from the chat` };
+        io.emit('message', message);
+        messages.push(message);
+    });
+
+
+});
+
+
+app.listen(port, function () {
+    console.log(`Application is running on port ${port}`);
 });
